@@ -16,36 +16,20 @@ echo "🌍 使用するリージョン: $REGION"
 # 1. RDSインスタンスの削除（タグベース + 名前ベース）
 echo -e "\n1. RDSインスタンスの削除"
 
+# 削除対象のインスタンスを収集する配列
+declare -a INSTANCES_TO_DELETE
+
 # まずタグベースで検索
 echo "🔍 タグ 'created-by:setup-test-env' でRDSインスタンスを検索"
 TAGGED_INSTANCES=$(aws rds describe-db-instances --query 'DBInstances[?starts_with(DBInstanceIdentifier, `test-`)].DBInstanceIdentifier' --output text --region $REGION)
 
-# タグ付きインスタンスの削除
 for INSTANCE_ID in $TAGGED_INSTANCES; do
     if [ -n "$INSTANCE_ID" ]; then
         echo "🔍 RDSインスタンス $INSTANCE_ID のタグ確認"
-        
-        # タグを確認
         TAGS=$(aws rds list-tags-for-resource --resource-name "arn:aws:rds:$REGION:$(aws sts get-caller-identity --query Account --output text):db:$INSTANCE_ID" --query 'TagList[?Key==`created-by`].Value' --output text --region $REGION 2>/dev/null)
         
         if [ "$TAGS" = "setup-test-env" ]; then
-            echo "🗑️ setup-test-envで作成されたRDSインスタンスを削除: $INSTANCE_ID"
-            
-            # 削除保護の無効化（必要に応じて）
-            aws rds modify-db-instance \
-                --db-instance-identifier $INSTANCE_ID \
-                --no-deletion-protection \
-                --apply-immediately \
-                --region $REGION > /dev/null 2>&1 || true
-            
-            # インスタンス削除（スナップショット作成をスキップ）
-            aws rds delete-db-instance \
-                --db-instance-identifier $INSTANCE_ID \
-                --skip-final-snapshot \
-                --delete-automated-backups \
-                --region $REGION
-            
-            echo "⏳ $INSTANCE_ID の削除を開始しました"
+            INSTANCES_TO_DELETE+=("$INSTANCE_ID")
         else
             echo "ℹ️ RDSインスタンス $INSTANCE_ID はsetup-test-envで作成されていません"
         fi
@@ -55,82 +39,95 @@ done
 # 従来の名前ベースでのフォールバック
 echo "🔍 名前ベースでのフォールバック検索"
 TEST_INSTANCES=("test-mysql-unencrypted" "test-mysql-encrypted" "test-sqlserver-insecure")
-
 for INSTANCE_ID in "${TEST_INSTANCES[@]}"; do
-    echo "🔍 RDSインスタンス $INSTANCE_ID の確認（フォールバック）"
-    
-    # インスタンスの存在確認
     if aws rds describe-db-instances --db-instance-identifier $INSTANCE_ID --region $REGION > /dev/null 2>&1; then
-        echo "🗑️ RDSインスタンスを削除: $INSTANCE_ID"
-        
-        # 削除保護の無効化（必要に応じて）
+        INSTANCES_TO_DELETE+=("$INSTANCE_ID")
+    fi
+done
+
+# 重複を排除して削除処理を実行
+UNIQUE_INSTANCES_TO_DELETE=($(printf "%s\n" "${INSTANCES_TO_DELETE[@]}" | sort -u))
+
+if [ ${#UNIQUE_INSTANCES_TO_DELETE[@]} -gt 0 ]; then
+    echo "�️ 以下のRDSインスタンスを削除します: ${UNIQUE_INSTANCES_TO_DELETE[*]}"
+    for INSTANCE_ID in "${UNIQUE_INSTANCES_TO_DELETE[@]}"; do
+        echo "  - 削除処理開始: $INSTANCE_ID"
+        # 削除保護の無効化
         aws rds modify-db-instance \
             --db-instance-identifier $INSTANCE_ID \
             --no-deletion-protection \
             --apply-immediately \
             --region $REGION > /dev/null 2>&1 || true
         
-        # インスタンス削除（スナップショット作成をスキップ）
-        aws rds delete-db-instance \
+        # インスタンス削除
+        if ! aws rds delete-db-instance \
             --db-instance-identifier $INSTANCE_ID \
             --skip-final-snapshot \
             --delete-automated-backups \
-            --region $REGION
-        
-        echo "⏳ $INSTANCE_ID の削除を開始しました"
-    fi
-done
-
-# RDSインスタンスの削除完了を待機
-ALL_INSTANCES=($TAGGED_INSTANCES "${TEST_INSTANCES[@]}")
-if [ ${#ALL_INSTANCES[@]} -gt 0 ]; then
-    echo "⏳ RDSインスタンスの削除完了を待機中..."
-    
-    for INSTANCE_ID in "${ALL_INSTANCES[@]}"; do
-        if [ -n "$INSTANCE_ID" ] && aws rds describe-db-instances --db-instance-identifier $INSTANCE_ID --region $REGION > /dev/null 2>&1; then
-            echo "  - $INSTANCE_ID の削除待機中..."
-            aws rds wait db-instance-deleted --db-instance-identifier $INSTANCE_ID --region $REGION
-            echo "✅ $INSTANCE_ID の削除完了"
+            --region $REGION; then
+            echo "⚠️ $INSTANCE_ID の削除開始に失敗しました。すでに削除処理中かもしれません。"
+        else
+            echo "✅ $INSTANCE_ID の削除を開始しました"
         fi
     done
+
+    # すべてのインスタンスの削除完了を待機
+    echo "⏳ すべてのRDSインスタンスの削除完了を待機中..."
+    for INSTANCE_ID in "${UNIQUE_INSTANCES_TO_DELETE[@]}"; do
+        echo "  - $INSTANCE_ID の削除完了待機..."
+        if ! aws rds wait db-instance-deleted --db-instance-identifier $INSTANCE_ID --region $REGION; then
+            echo "⚠️ $INSTANCE_ID の削除待機中にエラーが発生しましたが、処理を続行します。"
+        else
+            echo "✅ $INSTANCE_ID の削除が完了しました"
+        fi
+    done
+    echo "✅ すべてのRDSインスタンスが削除されました"
+else
+    echo "✅ 削除対象のRDSインスタンスは見つかりませんでした"
 fi
 
-# 2. パラメーターグループの削除（タグベース）
+
+# 2. パラメーターグループの削除（タグベース + 名前ベース）
 echo -e "\n2. パラメーターグループの削除"
+
+# 削除対象のパラメーターグループを収集
+declare -a PGS_TO_DELETE
 
 # タグでパラメーターグループを検索
 echo "🔍 タグ 'created-by:setup-test-env' でパラメーターグループを検索"
 PARAMETER_GROUPS_TAGGED=$(aws rds describe-db-parameter-groups --query 'DBParameterGroups[?starts_with(DBParameterGroupName, `test-`)].DBParameterGroupName' --output text --region $REGION)
-
 for PG_NAME in $PARAMETER_GROUPS_TAGGED; do
     if [ -n "$PG_NAME" ]; then
-        echo "🔍 パラメーターグループ $PG_NAME の確認"
-        
-        # タグを確認
         TAGS=$(aws rds list-tags-for-resource --resource-name "arn:aws:rds:$REGION:$(aws sts get-caller-identity --query Account --output text):pg:$PG_NAME" --query 'TagList[?Key==`created-by`].Value' --output text --region $REGION 2>/dev/null)
-        
         if [ "$TAGS" = "setup-test-env" ]; then
-            echo "🗑️ パラメーターグループを削除: $PG_NAME"
-            aws rds delete-db-parameter-group --db-parameter-group-name $PG_NAME --region $REGION
-            echo "✅ パラメーターグループ削除完了: $PG_NAME"
-        else
-            echo "ℹ️ パラメーターグループ $PG_NAME はsetup-test-envで作成されていません"
+            PGS_TO_DELETE+=("$PG_NAME")
         fi
     fi
 done
 
 # 従来の名前ベースでのフォールバック
-PARAMETER_GROUPS=("test-mysql-params" "test-sqlserver-params")
-
-for PG_NAME in "${PARAMETER_GROUPS[@]}"; do
-    echo "🔍 パラメーターグループ $PG_NAME の確認（フォールバック）"
-    
+PARAMETER_GROUPS_FALLBACK=("test-mysql-params" "test-sqlserver-params")
+for PG_NAME in "${PARAMETER_GROUPS_FALLBACK[@]}"; do
     if aws rds describe-db-parameter-groups --db-parameter-group-name $PG_NAME --region $REGION > /dev/null 2>&1; then
-        echo "🗑️ パラメーターグループを削除: $PG_NAME"
-        aws rds delete-db-parameter-group --db-parameter-group-name $PG_NAME --region $REGION
-        echo "✅ パラメーターグループ削除完了: $PG_NAME"
+        PGS_TO_DELETE+=("$PG_NAME")
     fi
 done
+
+# 重複を排除して削除処理を実行
+UNIQUE_PGS_TO_DELETE=($(printf "%s\n" "${PGS_TO_DELETE[@]}" | sort -u))
+if [ ${#UNIQUE_PGS_TO_DELETE[@]} -gt 0 ]; then
+    echo "🗑️ 以下のパラメーターグループを削除します: ${UNIQUE_PGS_TO_DELETE[*]}"
+    for PG_NAME in "${UNIQUE_PGS_TO_DELETE[@]}"; do
+        if ! aws rds delete-db-parameter-group --db-parameter-group-name "$PG_NAME" --region $REGION; then
+            echo "⚠️ $PG_NAME の削除に失敗しました。手動での確認が必要な場合があります。"
+        else
+            echo "✅ パラメーターグループ削除完了: $PG_NAME"
+        fi
+    done
+else
+    echo "✅ 削除対象のパラメーターグループは見つかりませんでした"
+fi
+
 
 # 3. DBサブネットグループの削除（タグベース）
 echo -e "\n3. DBサブネットグループの削除"
@@ -139,13 +136,15 @@ DB_SUBNET_GROUP_NAME="test-db-subnet-group"
 
 echo "🔍 DBサブネットグループ $DB_SUBNET_GROUP_NAME の確認"
 if aws rds describe-db-subnet-groups --db-subnet-group-name $DB_SUBNET_GROUP_NAME --region $REGION > /dev/null 2>&1; then
-    # タグを確認
     TAGS=$(aws rds list-tags-for-resource --resource-name "arn:aws:rds:$REGION:$(aws sts get-caller-identity --query Account --output text):subgrp:$DB_SUBNET_GROUP_NAME" --query 'TagList[?Key==`created-by`].Value' --output text --region $REGION 2>/dev/null)
     
     if [ "$TAGS" = "setup-test-env" ] || [ -z "$TAGS" ]; then
         echo "🗑️ DBサブネットグループを削除: $DB_SUBNET_GROUP_NAME"
-        aws rds delete-db-subnet-group --db-subnet-group-name $DB_SUBNET_GROUP_NAME --region $REGION
-        echo "✅ DBサブネットグループ削除完了"
+        if ! aws rds delete-db-subnet-group --db-subnet-group-name $DB_SUBNET_GROUP_NAME --region $REGION; then
+             echo "⚠️ $DB_SUBNET_GROUP_NAME の削除に失敗しました。手動での確認が必要な場合があります。"
+        else
+            echo "✅ DBサブネットグループ削除完了"
+        fi
     else
         echo "ℹ️ DBサブネットグループ $DB_SUBNET_GROUP_NAME はsetup-test-envで作成されていません"
     fi
@@ -180,8 +179,7 @@ CREATED_VPC=$(aws ec2 describe-vpcs --filters "Name=tag:created-by,Values=setup-
 if [ "$CREATED_VPC" != "None" ] && [ -n "$CREATED_VPC" ]; then
     echo "🔍 setup-test-envで作成されたVPCを確認: $CREATED_VPC"
     
-    read -p "⚠️ VPC $CREATED_VPC とその関連リソース（サブネット、ルートテーブル、IGW）を削除しますか？ (y/N): " -n 1 -r
-    echo
+    read -p "⚠️ VPC $CREATED_VPC とその関連リソース（サブネット、ルートテーブル、IGW）を削除しますか？ (y/N): " REPLY
     
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "🗑️ VPC関連リソースを削除します"
