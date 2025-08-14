@@ -1,0 +1,40 @@
+{
+  "name": "detect-created-rds-parameter",
+  "version": "0.1.0",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "deploy:existing": "./scripts/deploy-with-existing-config.sh",
+    "deploy:config": "npm run build && cdk deploy",
+    "destroy": "cdk destroy",
+    "diff": "cdk diff",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.8",
+    "aws-cdk": "2.147.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.5.3"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-stepfunctions": "^1.203.0",
+    "@aws-cdk/aws-stepfunctions-tasks": "^1.203.0",
+    "@aws-sdk/client-config-service": "^3.632.0",
+    "@aws-sdk/client-rds": "^3.632.0",
+    "@aws-sdk/client-sns": "^3.632.0",
+    "aws-cdk-lib": "2.147.0",
+    "constructs": "^10.3.0",
+    "source-map-support": "^0.5.21"
+  },
+  "overrides": {
+    "aws-cdk-lib": "2.147.0"
+  }
+}

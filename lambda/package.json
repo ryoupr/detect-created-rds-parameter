@@ -1,0 +1,9 @@
+{
+  "name": "rds-audit-lambda",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-rds": "^3.632.0",
+    "@aws-sdk/client-sns": "^3.632.0"
+  }
+}

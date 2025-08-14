@@ -1,0 +1,26 @@
+{
+  "sns": {
+    "existingTopicArn": "arn:aws:sns:ap-northeast-1:123456789012:existing-security-notifications"
+  },
+  "config": {
+    "existingConfigRoleArn": "arn:aws:iam::123456789012:role/existing-config-role",
+    "existingConfigurationRecorderArn": "arn:aws:config:ap-northeast-1:123456789012:config-recorder/default",
+    "existingDeliveryChannelArn": "arn:aws:config:ap-northeast-1:123456789012:delivery-channel/default"
+  },
+  "s3": {
+    "existingBucketName": "existing-config-bucket"
+  },
+  "iam": {
+    "lambdaRoleName": "RdsAuditLambdaRole"
+  },
+  "lambda": {
+    "functionName": "rds-encryption-audit-prod",
+    "timeout": 10,
+    "memorySize": 512,
+    "logLevel": "WARN"
+  },
+  "environment": {
+    "name": "production",
+    "region": "ap-northeast-1"
+  }
+}

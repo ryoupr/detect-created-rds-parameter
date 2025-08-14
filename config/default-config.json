@@ -1,0 +1,28 @@
+{
+  "sns": {
+    "topicName": "rds-encryption-audit-notifications",
+    "displayName": "RDS暗号化監査通知",
+    "emailAddress": "security-admin@yourcompany.com"
+  },
+  "config": {
+    "existingConfigurationRecorderArn": "arn:aws:config:ap-northeast-1:019136005936:configuration-recorder/default/rnygd0d3sv9jstnk",
+    "existingDeliveryChannelArn": "arn:aws:config:ap-northeast-1:019136005936:delivery-channel/default",
+    "existingConfigRoleArn": "arn:aws:iam::019136005936:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig"
+  },
+  "s3": {
+    "existingBucketArn": "arn:aws:s3:::config-bucket-019136005936"
+  },
+  "iam": {
+    "lambdaRoleName": "RdsAuditLambdaRole"
+  },
+  "lambda": {
+    "functionName": "rds-encryption-audit",
+    "parameterGroupAuditFunctionName": "rds-parameter-group-audit",
+    "timeout": 5,
+    "memorySize": 256,
+    "logLevel": "INFO"
+  },
+  "environment": {
+    "name": "dev"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "sns": {
+    "existingTopicArn": "arn:aws:sns:ap-northeast-1:123456789012:existing-security-notifications"
+  },
+  "s3": {
+    "existingBucketArn": "arn:aws:s3:::rdsencryptionauditstack-configbucket2112c5ec-ittc14uq9hhl"
+  },
+  "config": {
+    "existingDeliveryChannelArn": "arn:aws:config:ap-northeast-1:019136005936:delivery-channel/default",
+    "existingConfigurationRecorderArn": "arn:aws:config:ap-northeast-1:019136005936:configuration-recorder/default/rnygd0d3sv9jstnk"
+  },
+  "iam": {
+    "existingLambdaRoleArn": "arn:aws:iam::019136005936:role/RdsAuditLambdaRole",
+    "existingConfigRoleArn": "arn:aws:iam::019136005936:role/RdsEncryptionAuditStack-ConfigRoleF94F46B6-qVhEWcPay9cA"
+  },
+  "lambda": {
+    "functionName": "rds-encryption-audit-prod",
+    "timeout": 10,
+    "memorySize": 512,
+    "logLevel": "WARN"
+  },
+  "environment": {
+    "name": "prod"
+  }
+}
